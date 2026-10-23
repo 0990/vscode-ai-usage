@@ -1,0 +1,181 @@
+{
+  "name": "ai-usage-tracker",
+  "displayName": "AI Usage Tracker",
+  "description": "Track ChatGPT and Claude usage quotas in the status bar",
+  "version": "0.3.0",
+  "publisher": "ai-usage-tracker",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0990/vscode-ai-usage.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiUsageTracker.refresh",
+        "title": "AI Usage: Refresh Quotas"
+      },
+      {
+        "command": "aiUsageTracker.showDetails",
+        "title": "AI Usage: Show Detailed Usage"
+      },
+      {
+        "command": "aiUsageTracker.configure",
+        "title": "AI Usage: Settings"
+      },
+      {
+        "command": "aiUsageTracker.addCustomObject",
+        "title": "AI Usage: Add Custom Object"
+      },
+      {
+        "command": "aiUsageTracker.manageCustomObjects",
+        "title": "AI Usage: Manage Custom Objects"
+      },
+      {
+        "command": "aiUsageTracker.selectStatusBarItems",
+        "title": "AI Usage: Choose Status Bar Items"
+      }
+    ],
+    "configuration": {
+      "title": "AI Usage Tracker",
+      "properties": {
+        "aiUsageTracker.refreshInterval": {
+          "type": "number",
+          "default": 300,
+          "minimum": 30,
+          "description": "额度刷新间隔（秒），最小 30 秒。",
+          "order": 1
+        },
+        "aiUsageTracker.claude.script.command": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "可选的 Claude 查询脚本程序路径。留空时读取工作区所在主机的 Claude Code 凭据；SSH 窗口使用远程路径。",
+          "order": 2
+        },
+        "aiUsageTracker.claude.script.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine",
+          "description": "Claude 脚本参数，例如 [\"C:/scripts/claude-usage.sh\", \"-v\"]。",
+          "order": 3
+        },
+        "aiUsageTracker.statusBar.items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": [
+            "claude",
+            "openai",
+            "custom:*"
+          ],
+          "description": "状态栏显示项。内置 ID 为 claude、openai；custom:* 表示所有已启用自定义对象，也可填写单个自定义对象 ID。建议使用命令 AI Usage: Choose Status Bar Items 修改。",
+          "order": 4
+        },
+        "aiUsageTracker.customObjects": {
+          "type": "array",
+          "scope": "machine",
+          "default": [],
+          "description": "sub2api/newapi 自定义余额对象。建议使用 AI Usage: Add/Manage Custom Objects 命令维护。API Key 保存在当前运行主机的 VS Code 用户设置中。",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "type",
+              "baseUrl",
+              "apiKey"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "唯一 ID；创建后请勿修改。"
+              },
+              "name": {
+                "type": "string",
+                "description": "显示名称。"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "sub2api",
+                  "newapi"
+                ]
+              },
+              "baseUrl": {
+                "type": "string",
+                "description": "站点根地址或带 /v1 的地址。"
+              },
+              "apiKey": {
+                "type": "string",
+                "description": "Bearer API Key。"
+              },
+              "enabled": {
+                "type": "boolean",
+                "default": true
+              }
+            }
+          },
+          "order": 5
+        }
+      }
+    },
+    "icons": {
+      "ai-usage-claude": {
+        "description": "Claude pixel mascot",
+        "default": {
+          "fontPath": "./media/ai-usage-icons.woff",
+          "fontCharacter": "\\E001"
+        }
+      },
+      "ai-usage-chatgpt": {
+        "description": "OpenAI knot icon",
+        "default": {
+          "fontPath": "./media/ai-usage-icons.woff",
+          "fontCharacter": "\\E002"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "build": "node esbuild.js --production",
+    "build:dev": "node esbuild.js",
+    "lint": "tsc --noEmit",
+    "test": "node --require ./scripts/register-typescript.cjs --test tests/*.test.cjs",
+    "check:chatgpt": "node scripts/check-chatgpt.cjs",
+    "check:claude": "node scripts/check-claude.cjs",
+    "test:extension": "npm run build && node scripts/test-extension.cjs",
+    "package": "vsce package",
+    "icons:build": "python scripts/build-icons.py"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
+    "esbuild": "^0.19.0",
+    "typescript": "^5.3.0"
+  },
+  "icon": "media/icon.png"
+}

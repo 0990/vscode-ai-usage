@@ -1,0 +1,66 @@
+name: Release VSIX
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Verify tag and extension version
+        id: release-info
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/release-info.cjs
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check
+        run: npm run lint
+
+      - name: Run offline tests
+        run: npm test
+
+      - name: Build and package VSIX
+        env:
+          VSIX_NAME: ${{ steps.release-info.outputs.vsix }}
+        run: |
+          mkdir -p dist
+          npm run package -- --allow-missing-repository --out "dist/$VSIX_NAME"
+
+      - name: Publish GitHub Release with VSIX
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          VSIX_NAME: ${{ steps.release-info.outputs.vsix }}
+        run: |
+          gh release create "$RELEASE_TAG" "dist/$VSIX_NAME" \
+            --verify-tag \
+            --title "$RELEASE_TAG" \
+            --generate-notes
