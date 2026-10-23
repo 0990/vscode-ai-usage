@@ -48,7 +48,7 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar = new StatusBarManager(vscode.StatusBarAlignment.Right, 100);
   detailPanel = new DetailPanelManager();
 
-  statusBar.show();
+  statusBar.show(visibleStatusBarItems);
 
   // Register commands
   context.subscriptions.push(
@@ -130,52 +130,48 @@ function startRefreshTimer(intervalSeconds: number): void {
 async function refreshAll(): Promise<void> {
   const generation = ++refreshGeneration;
   const providers = [...customProviders];
-  const results = await Promise.allSettled([
-    claudeProvider?.getUsage(),
-    openaiProvider?.getUsage(),
-    ...providers.map(provider => provider.getUsage()),
+  const publish = () => {
+    statusBar?.update(claudeData, openaiData, customData, visibleStatusBarItems);
+    detailPanel?.updateData(claudeData, openaiData, customData);
+  };
+  const refreshBuiltIn = async (provider: 'claude' | 'openai') => {
+    let data: UsageData | undefined;
+    try {
+      data = await (provider === 'claude' ? claudeProvider : openaiProvider)?.getUsage();
+    } catch {
+      data = {
+        provider, mode: 'subscription', lastUpdated: new Date(),
+        error: '额度查询失败，请检查登录状态和网络。',
+      };
+    }
+    if (generation !== refreshGeneration) { return; }
+    if (provider === 'claude') { claudeData = data; } else { openaiData = data; }
+    publish();
+  };
+  await Promise.all([
+    refreshBuiltIn('claude'),
+    refreshBuiltIn('openai'),
+    ...providers.map(async provider => {
+      let data: CustomUsageData;
+      try {
+        data = await provider.getUsage();
+      } catch {
+        data = {
+          id: provider.config.id, name: provider.config.name, type: provider.config.type,
+          unit: '$', usedLabel: provider.config.type === 'sub2api' ? '今日用量' : '累计已用',
+          lastUpdated: new Date(), error: '余额查询失败，请检查对象配置和网络。',
+        };
+      }
+      if (generation !== refreshGeneration) { return; }
+      const byId = new Map(customData.map(value => [value.id, value]));
+      byId.set(data.id, data);
+      customData = providers.flatMap(value => {
+        const result = byId.get(value.config.id);
+        return result ? [result] : [];
+      });
+      publish();
+    }),
   ]);
-
-  if (generation !== refreshGeneration) { return; }
-
-  if (results[0].status === 'fulfilled' && results[0].value) {
-    claudeData = results[0].value;
-  } else if (results[0].status === 'rejected') {
-    claudeData = {
-      provider: 'claude',
-      mode: 'subscription',
-      lastUpdated: new Date(),
-      error: `Unexpected error: ${results[0].reason}`,
-    };
-  }
-
-  if (results[1].status === 'fulfilled' && results[1].value) {
-    openaiData = results[1].value;
-  } else if (results[1].status === 'rejected') {
-    openaiData = {
-      provider: 'openai',
-      mode: 'subscription',
-      lastUpdated: new Date(),
-      error: `Unexpected error: ${results[1].reason}`,
-    };
-  }
-
-  customData = providers.map((provider, index) => {
-    const result = results[index + 2];
-    if (result.status === 'fulfilled') { return result.value as CustomUsageData; }
-    return {
-      id: provider.config.id,
-      name: provider.config.name,
-      type: provider.config.type,
-      unit: '$',
-      usedLabel: provider.config.type === 'sub2api' ? '今日用量' : '累计已用',
-      lastUpdated: new Date(),
-      error: '余额查询失败，请检查对象配置和网络。',
-    };
-  });
-
-  statusBar?.update(claudeData, openaiData, customData, visibleStatusBarItems);
-  detailPanel?.updateData(claudeData, openaiData, customData);
 }
 
 export function deactivate(): void {

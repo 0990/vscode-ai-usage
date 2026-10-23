@@ -2,7 +2,7 @@
   "name": "ai-usage-tracker",
   "displayName": "AI Usage Tracker",
   "description": "Track ChatGPT and Claude usage quotas in the status bar",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "ai-usage-tracker",
   "license": "MIT",
   "repository": {

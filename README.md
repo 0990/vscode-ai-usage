@@ -163,6 +163,8 @@ code --install-extension /tmp/ai-usage-tracker-0.3.0.vsix --force
 
 **旧版本迁移：** 如果之前按旧文档配置了 `remote.extensionKind`，请删除其中 `ai-usage-tracker.ai-usage-tracker` 的覆盖项，采用新版默认规则。尤其不要保留 `["ui"]` 覆盖；即使强制本机加载，新版也不会在 SSH 窗口创建本机状态栏或查询本机账号。
 
+远端已安装但状态栏没有显示时，先执行 `Developer: Reload Window`，再运行 `AI Usage: Choose Status Bar Items` 确认已勾选 Claude / ChatGPT。从 0.3.1 起，选中的服务启动后立即显示加载图标，各服务分别更新；未登录或网络失败时显示警告，可点击查看详情。旧版会等所有请求完成后才显示，远端连接缓慢时可能一直看不到任何项目。如果仍不显示，右键状态栏确认 `Claude Usage` / `ChatGPT Usage` 没有被 VS Code 隐藏，并通过 `Developer: Show Running Extensions` 检查远端激活情况。
+
 ## 开发与打包
 
 ```bash

@@ -4,6 +4,12 @@
 
 - Add a tag-triggered GitHub Actions workflow that validates versions, tests, packages and publishes the VSIX as a GitHub Release asset
 
+## [0.3.1] - 2026-10-23
+
+- Show selected providers immediately with a loading indicator while quota requests are pending
+- Update each provider independently so a slow remote request does not block other status bar results
+- Bound network requests during DNS lookup and connection setup as well as socket inactivity
+
 ## [0.3.0] - 2026-10-23
 
 - Add custom sub2api and newapi balance objects with add, edit, enable/disable and delete commands

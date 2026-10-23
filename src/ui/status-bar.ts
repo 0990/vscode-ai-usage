@@ -24,13 +24,13 @@ export class StatusBarManager {
     visibleItems: string[] = ['claude', 'openai', 'custom:*']
   ): void {
     const visible = new Set(visibleItems);
-    if (claudeData && visible.has('claude')) {
-      this.updateItem(this.claudeItem, claudeData, '$(ai-usage-claude)', 'Claude');
+    if (visible.has('claude')) {
+      this.updateProviderItem(this.claudeItem, claudeData, '$(ai-usage-claude)', 'Claude');
     } else {
       this.claudeItem.hide();
     }
-    if (openaiData && visible.has('openai')) {
-      this.updateItem(this.openaiItem, openaiData, '$(ai-usage-chatgpt)', 'ChatGPT');
+    if (visible.has('openai')) {
+      this.updateProviderItem(this.openaiItem, openaiData, '$(ai-usage-chatgpt)', 'ChatGPT');
     } else {
       this.openaiItem.hide();
     }
@@ -59,6 +59,22 @@ export class StatusBarManager {
         item.hide();
       }
     });
+  }
+
+  private updateProviderItem(
+    item: vscode.StatusBarItem,
+    data: UsageData | undefined,
+    icon: string,
+    label: string
+  ): void {
+    if (data) {
+      this.updateItem(item, data, icon, label);
+      return;
+    }
+    item.text = `${icon} $(loading~spin)`;
+    item.tooltip = `${label}: 正在查询额度，点击查看详情`;
+    item.backgroundColor = undefined;
+    item.show();
   }
 
   private updateCustomItem(item: vscode.StatusBarItem, data: CustomUsageData): void {
@@ -197,9 +213,8 @@ export class StatusBarManager {
     return `\`${filledChar.repeat(filled)}${emptyChar.repeat(empty)}\``;
   }
 
-  show(): void {
-    // Items become visible after the first update, once visibility settings and
-    // actual data are known. This avoids empty placeholders during activation.
+  show(visibleItems: string[] = ['claude', 'openai', 'custom:*']): void {
+    this.update(undefined, undefined, [], visibleItems);
   }
 
   hide(): void {

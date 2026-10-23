@@ -52,6 +52,12 @@ function makeRequest(options: RequestOptions): Promise<HttpResponse> {
       res.on('error', reject);
     });
 
+    // Socket inactivity timeouts alone do not bound DNS lookup or connection setup.
+    const deadline = setTimeout(() => {
+      req.destroy(new Error(`Request timed out after ${options.timeout ?? DEFAULT_TIMEOUT}ms`));
+    }, options.timeout ?? DEFAULT_TIMEOUT);
+    req.once('close', () => clearTimeout(deadline));
+
     req.on('timeout', () => {
       req.destroy(new Error(`Request timed out after ${options.timeout ?? DEFAULT_TIMEOUT}ms`));
     });

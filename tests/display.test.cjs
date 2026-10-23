@@ -89,6 +89,28 @@ test('status visibility supports mixed selections, hide-all and custom removal',
   assert.equal(relay.disposed, true);
 });
 
+test('startup shows selected providers while quotas are still loading', () => {
+  const status = new StatusBarManager(2, 100);
+  const claude = items.at(-2);
+  const gpt = items.at(-1);
+  status.show(['claude', 'openai']);
+  assert.equal(claude.visible, true);
+  assert.equal(gpt.visible, true);
+  assert.match(claude.text, /loading~spin/);
+  assert.match(gpt.text, /loading~spin/);
+
+  const usage = parseClaudeUsage({ five_hour: { utilization: 24 } });
+  status.update(usage, undefined, [], ['claude', 'openai']);
+  assert.match(claude.text, /76%/);
+  assert.match(gpt.text, /loading~spin/);
+  status.show(['openai']);
+  assert.equal(claude.visible, false);
+  assert.equal(gpt.visible, true);
+  status.show([]);
+  assert.equal(claude.visible, false);
+  assert.equal(gpt.visible, false);
+});
+
 test('Claude used percentages display as remaining percentages in both views', () => {
   const usage = parseClaudeUsage({ five_hour: { utilization: 24 }, seven_day: { utilization: 68 } });
   const status = new StatusBarManager(2, 100);
