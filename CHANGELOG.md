@@ -4,6 +4,15 @@
 
 - Add a tag-triggered GitHub Actions workflow that validates versions, tests, packages and publishes the VSIX as a GitHub Release asset
 
+## [0.3.2] - 2026-10-23
+
+- Share HTTP and Claude script query results across windows/processes for the same host and system user, with separate cache keys for credentials and endpoints
+- Cache both successful and failed queries for the refresh period; remove immediate HTTP retries and respect longer Retry-After deadlines on HTTP 429
+- Reserve a query period before network/script work so reloads and interrupted hosts cannot immediately repeat a request
+- Poll after each completed cycle and stop scheduling when the extension is disposed
+- Restrict custom endpoint fallback to HTTP 404/405; do not retry failed queries through another route
+- Preserve original sample/reset dates on cache hits and clarify separate Claude script program/argument settings
+
 ## [0.3.1] - 2026-10-23
 
 - Show selected providers immediately with a loading indicator while quota requests are pending

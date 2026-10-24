@@ -3,7 +3,6 @@ import { fetchClaudeUsage } from './claude-usage';
 
 export class ClaudeUsageProvider implements UsageProvider {
   readonly name = 'Claude';
-  private subscriptionRequest?: Promise<UsageData>;
 
   constructor(private config: ProviderConfig = {}) {}
 
@@ -11,14 +10,9 @@ export class ClaudeUsageProvider implements UsageProvider {
     this.config = config;
   }
 
-  async getUsage(): Promise<UsageData> {
+  async getUsage(intervalSeconds = 300): Promise<UsageData> {
     try {
-      if (!this.subscriptionRequest) {
-        this.subscriptionRequest = fetchClaudeUsage(this.config).finally(() => {
-          this.subscriptionRequest = undefined;
-        });
-      }
-      return await this.subscriptionRequest;
+      return await fetchClaudeUsage(this.config, undefined, undefined, intervalSeconds * 1000);
     } catch (error) {
       return {
         provider: 'claude', mode: this.config.claudeScriptCommand ? 'script' : 'subscription',

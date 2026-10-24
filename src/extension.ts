@@ -15,7 +15,9 @@ import type { CustomUsageData, UsageData } from './types';
 
 let statusBar: StatusBarManager | undefined;
 let detailPanel: DetailPanelManager | undefined;
-let refreshTimer: ReturnType<typeof setInterval> | undefined;
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+let refreshTimerGeneration = 0;
+let refreshIntervalSeconds = 300;
 let claudeProvider: ClaudeUsageProvider | undefined;
 let openaiProvider: OpenAIUsageProvider | undefined;
 let claudeData: UsageData | undefined;
@@ -91,23 +93,19 @@ export function activate(context: vscode.ExtensionContext): void {
 
       // Restart refresh timer
       startRefreshTimer(configManager.getRefreshInterval());
-
-      // Refresh immediately after config change
-      void refreshAll();
     })
   );
 
-  // Start periodic refresh
+  // Fetch once, then wait the configured period after every completed cycle.
   startRefreshTimer(configManager.getRefreshInterval());
-
-  // Initial refresh
-  void refreshAll();
 
   // Register disposable
   context.subscriptions.push({
     dispose: () => {
+      refreshTimerGeneration++;
+      refreshGeneration++;
       if (refreshTimer) {
-        clearInterval(refreshTimer);
+        clearTimeout(refreshTimer);
         refreshTimer = undefined;
       }
       statusBar?.dispose();
@@ -119,12 +117,24 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 function startRefreshTimer(intervalSeconds: number): void {
+  const generation = ++refreshTimerGeneration;
+  refreshIntervalSeconds = intervalSeconds;
   if (refreshTimer) {
-    clearInterval(refreshTimer);
+    clearTimeout(refreshTimer);
+    refreshTimer = undefined;
   }
-  refreshTimer = setInterval(() => {
-    void refreshAll();
-  }, intervalSeconds * 1000);
+  const refresh = async () => {
+    try {
+      await refreshAll();
+    } finally {
+      // The next cycle starts after completion, so a slow request cannot overlap a
+      // timer tick or make a just-cached result skip an entire refresh cycle.
+      if (generation === refreshTimerGeneration) {
+        refreshTimer = setTimeout(() => { void refresh(); }, intervalSeconds * 1000);
+      }
+    }
+  };
+  void refresh();
 }
 
 async function refreshAll(): Promise<void> {
@@ -137,7 +147,7 @@ async function refreshAll(): Promise<void> {
   const refreshBuiltIn = async (provider: 'claude' | 'openai') => {
     let data: UsageData | undefined;
     try {
-      data = await (provider === 'claude' ? claudeProvider : openaiProvider)?.getUsage();
+      data = await (provider === 'claude' ? claudeProvider : openaiProvider)?.getUsage(refreshIntervalSeconds);
     } catch {
       data = {
         provider, mode: 'subscription', lastUpdated: new Date(),
@@ -154,7 +164,7 @@ async function refreshAll(): Promise<void> {
     ...providers.map(async provider => {
       let data: CustomUsageData;
       try {
-        data = await provider.getUsage();
+        data = await provider.getUsage(refreshIntervalSeconds);
       } catch {
         data = {
           id: provider.config.id, name: provider.config.name, type: provider.config.type,
@@ -176,8 +186,9 @@ async function refreshAll(): Promise<void> {
 
 export function deactivate(): void {
   refreshGeneration++;
+  refreshTimerGeneration++;
   if (refreshTimer) {
-    clearInterval(refreshTimer);
+    clearTimeout(refreshTimer);
     refreshTimer = undefined;
   }
   statusBar?.dispose();

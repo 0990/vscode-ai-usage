@@ -25,22 +25,20 @@ test('network deadline bounds requests that never connect, and clears timers aft
   const module = { exports: {} };
   vm.runInNewContext(code, {
     module, exports: module.exports,
-    require: name => name === 'node:url' ? require(name) : transport,
+    require: name => name === '../utils/shared-query-cache' || name === './shared-query-cache'
+      ? { DEFAULT_CACHE_TTL_MS: 300000, sharedQueryCache: { get: (_key, _ttl, query) => query() } }
+      : name === 'node:url' ? require(name) : transport,
     Buffer,
     setTimeout(callback, delay) { const id = {}; timers.set(id, { callback, delay }); return id; },
     clearTimeout(id) { timers.delete(id); },
   });
   const request = module.exports.httpRequest({ url: 'https://unreachable.test', timeout: 25 });
   const result = assert.rejects(request, /Request timed out after 25ms/);
-  // Each failed attempt is followed by a retry delay, then another connection attempt.
-  for (let step = 0; step < 5; step++) {
-    const [id, timer] = timers.entries().next().value;
-    assert.equal(timer.delay, step % 2 === 0 ? 25 : step === 1 ? 1000 : 2000);
-    timers.delete(id);
-    timer.callback();
-    await new Promise(resolve => setImmediate(resolve));
-  }
+  const [id, timer] = timers.entries().next().value;
+  assert.equal(timer.delay, 25);
+  timers.delete(id);
+  timer.callback();
   await result;
-  assert.equal(requests.length, 3);
+  assert.equal(requests.length, 1);
   assert.equal(timers.size, 0);
 });

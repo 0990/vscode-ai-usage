@@ -1,9 +1,10 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import type { HttpResponse, ProviderConfig, QuotaInfo, UsageData } from '../types';
 import { httpRequest } from '../utils/http';
+import { DEFAULT_CACHE_TTL_MS, sharedQueryCache } from '../utils/shared-query-cache';
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -151,9 +152,28 @@ export function runClaudeScript(config: ProviderConfig, timeout = 30000): Promis
 export async function fetchClaudeUsage(
   config: ProviderConfig = {},
   request: typeof httpRequest = httpRequest,
-  tokenLoader: () => Promise<string> = loadClaudeToken
+  tokenLoader: () => Promise<string> = loadClaudeToken,
+  cacheTtlMs = DEFAULT_CACHE_TTL_MS
 ): Promise<UsageData> {
-  if (config.claudeScriptCommand?.trim()) { return runClaudeScript(config); }
+  if (config.claudeScriptCommand?.trim()) {
+    const home = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+    const paths = [process.env.CLAUDE_SETTINGS_FILE || join(home, 'settings.json'), join(home, '.credentials.json')];
+    // Script credentials remain the script's responsibility; only inspect file metadata.
+    const files = await Promise.all(paths.map(async path => {
+      const file = await stat(path).catch(() => undefined);
+      return [path, file?.mtimeMs, file?.size];
+    }));
+    const result = await sharedQueryCache.get([
+      'claude-script', config.claudeScriptCommand.trim(), config.claudeScriptArgs ?? [],
+      homedir(), files, process.env.CLAUDE_CODE_OAUTH_TOKEN,
+    ], cacheTtlMs, () => runClaudeScript(config));
+    // JSON cache records must retain the original sample/reset dates in the UI.
+    const date = (value: Date) => new Date(value instanceof Date ? value.getTime() : value);
+    const window = (value?: QuotaInfo) => value && {
+      ...value, resetAt: value.resetAt ? date(value.resetAt) : undefined,
+    };
+    return { ...result, lastUpdated: date(result.lastUpdated), fiveHour: window(result.fiveHour), sevenDay: window(result.sevenDay) };
+  }
   const token = await tokenLoader();
   const headers = {
     Authorization: `Bearer ${token}`,
@@ -161,7 +181,7 @@ export async function fetchClaudeUsage(
     'anthropic-version': '2023-06-01',
     'Content-Type': 'application/json',
   };
-  const response = await request({ url: 'https://api.anthropic.com/api/oauth/usage', method: 'GET', headers });
+  const response = await request({ url: 'https://api.anthropic.com/api/oauth/usage', method: 'GET', headers, cacheTtlMs });
   if (response.statusCode === 401) { throw new Error('Claude 登录失效（HTTP 401），请在插件运行的主机上重新登录 Claude Code。'); }
   if (response.statusCode === 403) {
     throw new Error('Claude 额度查询被拒绝（HTTP 403）。当前 Token 可能缺少 user:profile 权限；可配置 Claude 查询脚本。');
@@ -169,5 +189,5 @@ export async function fetchClaudeUsage(
   if (response.statusCode !== 200) { throw new Error(`Claude 额度查询失败（HTTP ${response.statusCode}）。`); }
   let data: unknown;
   try { data = JSON.parse(response.body); } catch { throw new Error('Claude 额度接口未返回有效 JSON。'); }
-  return parseClaudeUsage(data);
+  return { ...parseClaudeUsage(data), lastUpdated: new Date(response.fetchedAt ?? Date.now()) };
 }

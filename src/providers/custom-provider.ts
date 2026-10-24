@@ -5,9 +5,14 @@ import type {
   HttpResponse,
 } from '../types';
 import { httpRequest } from '../utils/http';
+import { DEFAULT_CACHE_TTL_MS } from '../utils/shared-query-cache';
 
 type Request = typeof httpRequest;
 type JsonObject = Record<string, unknown>;
+
+class EndpointError extends Error {
+  constructor(readonly status: number) { super(`HTTP ${status}`); }
+}
 
 function object(value: unknown): JsonObject | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -69,7 +74,7 @@ async function relayGet(url: string, apiKey: string, request: Request): Promise<
     throw new Error('余额请求失败（网络、代理或超时）。');
   }
   if (response.statusCode !== 200) {
-    throw new Error(`HTTP ${response.statusCode}`);
+    throw new EndpointError(response.statusCode);
   }
   return response;
 }
@@ -101,7 +106,7 @@ async function fetchSub2api(
     used: bucketCost(usage?.today),
     unit: currencySymbol(data.unit),
     usedLabel: '今日用量',
-    lastUpdated: new Date(),
+    lastUpdated: new Date(response.fetchedAt ?? Date.now()),
   };
 }
 
@@ -113,9 +118,10 @@ async function fetchNewapi(
   const subscription = json((await relayGet(
     `${base}/dashboard/billing/subscription`, config.apiKey, request
   )).body, 'newapi subscription');
-  const usage = json((await relayGet(
+  const usageResponse = await relayGet(
     `${base}/dashboard/billing/usage`, config.apiKey, request
-  )).body, 'newapi usage');
+  );
+  const usage = json(usageResponse.body, 'newapi usage');
   const limit = finite(subscription.hard_limit_usd);
   const totalUsage = finite(usage.total_usage);
   if (limit === undefined || totalUsage === undefined) {
@@ -130,7 +136,7 @@ async function fetchNewapi(
     used,
     unit: '$',
     usedLabel: '累计已用',
-    lastUpdated: new Date(),
+    lastUpdated: new Date(usageResponse.fetchedAt ?? Date.now()),
   };
 }
 
@@ -146,7 +152,8 @@ async function fetchAtBase(
 
 export async function fetchCustomUsage(
   config: CustomObjectConfig,
-  request: Request = httpRequest
+  request: Request = httpRequest,
+  cacheTtlMs = DEFAULT_CACHE_TTL_MS
 ): Promise<CustomUsageData> {
   const parsed = validate(config);
   const base = parsed.toString().replace(/\/$/, '');
@@ -154,9 +161,12 @@ export async function fetchCustomUsage(
   let lastError: unknown;
   for (const candidate of candidates) {
     try {
-      return await fetchAtBase(candidate, config, request);
+      return await fetchAtBase(candidate, config, options => request({ ...options, cacheTtlMs }));
     } catch (error) {
       lastError = error;
+      // Only an absent endpoint warrants route discovery. Never repeat a failed query
+      // on 429, 5xx, authentication, malformed responses or network errors.
+      if (!(error instanceof EndpointError) || ![404, 405].includes(error.status)) { throw error; }
     }
   }
   throw lastError instanceof Error ? lastError : new Error('余额查询失败。');
@@ -165,9 +175,9 @@ export async function fetchCustomUsage(
 export class CustomUsageProvider {
   constructor(readonly config: CustomObjectConfig) {}
 
-  async getUsage(): Promise<CustomUsageData> {
+  async getUsage(intervalSeconds = 300): Promise<CustomUsageData> {
     try {
-      return await fetchCustomUsage(this.config);
+      return await fetchCustomUsage(this.config, undefined, intervalSeconds * 1000);
     } catch (error) {
       return {
         id: this.config.id,

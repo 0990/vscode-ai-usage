@@ -36,6 +36,18 @@ test('root endpoint fallback stays on the configured origin', async () => {
   assert.equal(data.balance, 7);
 });
 
+test('429, 5xx, network and malformed responses never trigger a second endpoint query', async () => {
+  for (const statusCode of [401, 403, 429, 500, 'network', 'malformed']) {
+    let calls = 0;
+    await assert.rejects(fetchCustomUsage(config, async () => {
+      calls++;
+      if (statusCode === 'network') throw new Error('offline');
+      return statusCode === 'malformed' ? response({}) : { statusCode, body: '' };
+    }));
+    assert.equal(calls, 1);
+  }
+});
+
 test('newapi converts cents and allows depleted/negative balances', async () => {
   for (const total_usage of [200, 1200]) {
     const urls = [];

@@ -6,9 +6,9 @@ export class OpenAIUsageProvider implements UsageProvider {
 
   constructor(private readonly authPath?: string) {}
 
-  async getUsage(): Promise<UsageData> {
+  async getUsage(intervalSeconds = 300): Promise<UsageData> {
     try {
-      return await fetchCodexUsage(this.authPath);
+      return await fetchCodexUsage(this.authPath, undefined, intervalSeconds * 1000);
     } catch (error) {
       return {
         provider: 'openai', mode: 'subscription', lastUpdated: new Date(),

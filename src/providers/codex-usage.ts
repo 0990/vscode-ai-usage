@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { QuotaInfo, UsageData } from '../types';
 import { httpRequest } from '../utils/http';
+import { DEFAULT_CACHE_TTL_MS } from '../utils/shared-query-cache';
 
 const USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage';
 const FIVE_HOUR_MAX_SECONDS = 6 * 60 * 60;
@@ -110,13 +111,14 @@ export function parseCodexUsage(data: unknown, now = Date.now()): UsageData {
 
 export async function fetchCodexUsage(
   authPath?: string,
-  request: typeof httpRequest = httpRequest
+  request: typeof httpRequest = httpRequest,
+  cacheTtlMs = DEFAULT_CACHE_TTL_MS
 ): Promise<UsageData> {
   // Read again on every refresh so Codex login/token rotation takes effect immediately.
   const auth = await loadCodexAuth(authPath || undefined);
   const headers: Record<string, string> = { Authorization: `Bearer ${auth.accessToken}` };
   if (auth.accountId) { headers['chatgpt-account-id'] = auth.accountId; }
-  const response = await request({ url: USAGE_URL, method: 'GET', headers });
+  const response = await request({ url: USAGE_URL, method: 'GET', headers, cacheTtlMs });
   if (response.statusCode === 401) {
     throw new Error('ChatGPT 登录已过期（HTTP 401），请在插件运行的主机上重新登录 Codex 后刷新额度。');
   }
@@ -132,5 +134,5 @@ export async function fetchCodexUsage(
   } catch {
     throw new Error('ChatGPT 额度接口未返回有效 JSON。');
   }
-  return parseCodexUsage(data);
+  return parseCodexUsage(data, response.fetchedAt ?? Date.now());
 }

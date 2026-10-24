@@ -50,9 +50,10 @@ export interface HttpResponse {
   statusCode: number;
   headers: Record<string, string | string[] | undefined>;
   body: string;
+  fetchedAt?: number;
 }
 
 export interface UsageProvider {
-  getUsage(): Promise<UsageData>;
+  getUsage(intervalSeconds?: number): Promise<UsageData>;
   readonly name: string;
 }

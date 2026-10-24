@@ -14,6 +14,16 @@ ChatGPT 默认读取 `$CODEX_HOME/auth.json`，未设置时读取 `~/.codex/auth
 
 插件在每次刷新时重新读取凭据，不修改凭据文件、不输出 Token。未登录或登录过期时显示提示；缺失窗口不会显示为 100%。Claude 的 macOS 钥匙串暂未集成，可通过环境变量、设置文件或脚本提供查询。
 
+### 刷新、共享缓存与运行时间
+
+Claude、ChatGPT、自定义余额接口和 Claude 查询脚本均使用磁盘共享缓存。同一主机、同一系统用户的多个 VS Code 窗口共享相同查询与凭据对应的结果；不同账号或接口相互隔离。本机和不同 SSH 主机分别缓存。
+
+每轮查询完成后等待 `refreshInterval` 再进行下一轮，默认 300 秒。成功和失败都会缓存一个周期，429、5xx、网络错误或脚本失败均不立即重试；手动刷新、修改显示设置和重载窗口也不会绕过有效缓存。429 的 `Retry-After` 要求等待更久时，按更长的期限缓存失败结果，之后的正常刷新周期再查询。缓存命中保留原始采样和额度重置时间。修改刷新周期不会提前解除当前缓存的冷却期限；更换凭据、接口或脚本配置会使用对应的新缓存。
+
+缓存保存在运行主机的 `$XDG_CACHE_HOME/ai-usage-tracker/v1`，未设置时为 `~/.cache/ai-usage-tracker/v1`。目录和文件仅供当前用户访问，缓存键使用哈希，不保存请求中的 Token 或 API Key 明文。缓存不可读写时停止本轮查询，不回退到重复网络请求。
+
+**共享缓存不会启动后台服务。** 只有 VS Code 扩展进程运行时才会轮询，扩展停用或进程退出后停止。Remote SSH 断开后，远端扩展进程可能暂时存活，存活期间仍可能刷新；以远端扩展进程实际退出为准。状态栏显示选择只控制显示，停用插件或自定义对象才能停止对应查询。
+
 普通窗口在本机执行；Remote SSH 窗口仅在远程执行。SSH 主机未安装插件时，该窗口不显示额度状态栏，也不回退查询本机账号。远端安装并启用后，结果显示在当前 VS Code 状态栏。
 
 插件图标直接展示 **5h / 7d 两条进度条**，便于识别用途。
@@ -46,7 +56,7 @@ Claude 与 ChatGPT 状态栏只显示服务图标及额度；自定义对象显�
 - `sub2api`：请求 `{base}/v1/usage`，显示余额和今日用量。
 - `newapi`：请求 OpenAI billing 兼容的 `subscription` 与 `usage` 接口，显示余额和累计已用。
 
-Base URL 可填写站点根地址或带 `/v1` 的地址；根地址会先尝试 `/v1`，失败后回退根地址。API Key 通过 `Authorization: Bearer ...` 发送，不会写入日志或错误信息。它保存在插件运行主机的 VS Code 用户设置中；不要把包含该设置的 `settings.json` 提交到代码仓库。
+Base URL 可填写站点根地址或带 `/v1` 的地址；根地址会先尝试 `/v1`，仅在接口返回 404/405 时回退根地址。429、其它 HTTP 错误、无效响应和网络错误均等下个周期再查。API Key 通过 `Authorization: Bearer ...` 发送，不会写入日志或错误信息。它保存在插件运行主机的 VS Code 用户设置中；不要把包含该设置的 `settings.json` 提交到代码仓库。
 
 更新插件后，如当前窗口仍显示旧版星光或通用机器人，请执行一次 `Developer: Reload Window`，让运行中的扩展宿主和图标字体加载新版本。
 
@@ -95,6 +105,15 @@ chmod 700 "$HOME/.local/bin/claude-usage.sh"
 
 请替换为实际 Linux 用户的绝对路径，参数中的 `~` 不会自动展开。Linux 本机运行时写入用户设置；Remote SSH 远程运行时写入 **Remote Settings**，不要沿用 Windows 的 `bash.exe` 或 `C:/...` 路径。
 
+例如本项目所在机器的脚本配置应为以下形式，不能将整条 `/bin/bash /data/aipro/scripts/claude-usage.sh -v` 填入 `command`：
+
+```json
+{
+  "aiUsageTracker.claude.script.command": "/bin/bash",
+  "aiUsageTracker.claude.script.args": ["/data/aipro/scripts/claude-usage.sh", "-v"]
+}
+```
+
 附件脚本从进程环境变量 `CLAUDE_CODE_OAUTH_TOKEN` 或 `~/.claude/settings.json` 的 `env.CLAUDE_CODE_OAUTH_TOKEN` 读取 Token，并支持 `CLAUDE_SETTINGS_FILE`。它不会读取 `.credentials.json`；仅有 Claude Code 登录文件时，可留空脚本程序，使用插件默认查询。
 
 终端里临时 `export` 的变量不一定会传给已经运行的扩展宿主。脚本在终端成功、在插件里失败时，请检查脚本可读取的设置文件，以及扩展宿主继承的环境。远程运行使用的是远程用户的文件、环境和网络。
@@ -119,13 +138,13 @@ chmod 700 "$HOME/.local/bin/claude-usage.sh"
 ### 安装到本机 / 其它电脑
 
 1. 打开普通本机 VS Code 窗口，确认左下角没有 `SSH: ...` 连接标记。
-2. 将 **`ai-usage-tracker-0.3.0.vsix`** 复制到该电脑。
+2. 将 **`ai-usage-tracker-0.3.2.vsix`** 复制到该电脑。
 3. 扩展视图右上角 `...` → `Install from VSIX...`，或命令面板执行 `Extensions: Install from VSIX...`，选择安装包。
 
 也可以在该电脑的普通本机终端执行：
 
 ```bash
-code --install-extension ./ai-usage-tracker-0.3.0.vsix --force
+code --install-extension ./ai-usage-tracker-0.3.2.vsix --force
 ```
 
 安装后执行 `Developer: Reload Window`。目标机器需要 VS Code 1.85 或更新版本；直接安装 VSIX 无需 Node.js、npm 或重新编译，脚本模式的依赖需单独准备。随后在插件实际运行的机器上登录 Codex / Claude Code，或准备 Claude 查询脚本及其凭据。
@@ -141,10 +160,10 @@ code --install-extension ./ai-usage-tracker-0.3.0.vsix --force
 
 这个安装提示与截图中的 `Install in SSH: ...` 行为一致，属于 VS Code 的工作区扩展安装机制。安装位置和分组说明见 [Remote SSH 官方文档](https://code.visualstudio.com/docs/remote/ssh#_managing-extensions)。
 
-也可先将 VSIX 上传到远端，例如 `/tmp/ai-usage-tracker-0.3.0.vsix`，再在 **VS Code SSH 窗口的集成终端**中执行：
+也可先将 VSIX 上传到远端，例如 `/tmp/ai-usage-tracker-0.3.2.vsix`，再在 **VS Code SSH 窗口的集成终端**中执行：
 
 ```bash
-code --install-extension /tmp/ai-usage-tracker-0.3.0.vsix --force
+code --install-extension /tmp/ai-usage-tracker-0.3.2.vsix --force
 ```
 
 这里的 `code` 是远程会话提供的 CLI。普通本机终端中的 `code --install-extension` 安装到本机；VS Code SSH 集成终端中的同一命令安装到当前远端，不是由 VSIX 文件存放在本地还是远程来单独决定。

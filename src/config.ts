@@ -16,7 +16,8 @@ export class ConfigManager {
   }
 
   getRefreshInterval(): number {
-    return Math.max(30, this.config.get<number>('refreshInterval', 300));
+    const interval = this.config.get<number>('refreshInterval', 300);
+    return Number.isFinite(interval) ? Math.max(30, interval) : 300;
   }
 
   getCustomObjects(): CustomObjectConfig[] {

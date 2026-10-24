@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { mkdtemp, writeFile, rm } = require('node:fs/promises');
+const { mkdtemp, writeFile, readFile, rm } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { loadClaudeToken, parseClaudeUsage, parseClaudeHeaders, parseClaudeScriptOutput, fetchClaudeUsage, runClaudeScript } = require('../src/providers/claude-usage.ts');
@@ -133,10 +133,38 @@ test('script failures/timeouts are bounded and do not expose command arguments o
   await assert.rejects(runClaudeScript({ claudeScriptCommand: process.execPath, claudeScriptArgs: ['-e', 'setInterval(() => {}, 1000)'] }, 1000), /超时/);
 });
 
+test('script results and failures are shared between provider instances without rerunning within a cycle', async t => {
+  const f = await fixture(t);
+  for (const failing of [false, true]) {
+    const counter = join(f.dir, `calls-${failing}.txt`);
+    const script = join(f.dir, `query-${failing}.cjs`);
+    await writeFile(script, `require('node:fs').appendFileSync(${JSON.stringify(counter)}, 'called\\n');` +
+      (failing ? "console.error('private-stderr');process.exit(1);" : `console.log(${JSON.stringify(JSON.stringify(windows))});`));
+    const config = { claudeScriptCommand: process.execPath, claudeScriptArgs: [script] };
+    const first = await new ClaudeUsageProvider(config).getUsage(0.1);
+    const second = await new ClaudeUsageProvider(config).getUsage(0.1);
+    assert.equal((await readFile(counter, 'utf8')).trim(), 'called');
+    if (failing) {
+      assert.match(first.error, /执行失败/);
+      assert.equal(second.error, first.error);
+      assert.doesNotMatch(second.error, /private-stderr/);
+    } else {
+      assert.equal(second.fiveHour.used, first.fiveHour.used);
+      assert.ok(second.lastUpdated instanceof Date);
+      assert.ok(second.fiveHour.resetAt instanceof Date);
+      assert.equal(second.lastUpdated.getTime(), first.lastUpdated.getTime());
+      assert.equal(second.fiveHour.resetAt.getTime(), first.fiveHour.resetAt.getTime());
+    }
+    await new Promise(resolve => setTimeout(resolve, 125));
+    await new ClaudeUsageProvider(config).getUsage(0.1);
+    assert.equal((await readFile(counter, 'utf8')).trim().split('\n').length, 2);
+  }
+});
+
 test('provider coalesces overlapping script refreshes and exposes script errors without API fallback', async () => {
   const provider = new ClaudeUsageProvider({ claudeScriptCommand: process.execPath, claudeScriptArgs: ['-e', `setTimeout(() => console.log(${JSON.stringify(JSON.stringify(windows))}), 50)`] });
   const [first, second] = await Promise.all([provider.getUsage(), provider.getUsage()]);
-  assert.strictEqual(first, second);
+  assert.deepEqual(first, second);
   assert.equal(first.mode, 'script');
   provider.updateConfig({ claudeScriptCommand: '__missing-ai-usage-script__' });
   assert.match((await provider.getUsage()).error, /执行失败/);

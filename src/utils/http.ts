@@ -2,16 +2,16 @@ import * as https from 'node:https';
 import * as http from 'node:http';
 import { URL } from 'node:url';
 import type { HttpResponse } from '../types';
+import { DEFAULT_CACHE_TTL_MS, sharedQueryCache } from './shared-query-cache';
 
 const DEFAULT_TIMEOUT = 15_000;
-const MAX_RETRIES = 2;
-const RETRY_DELAY_MS = 1_000;
 
 interface RequestOptions {
   url: string;
   method?: 'GET';
   headers?: Record<string, string>;
   timeout?: number;
+  cacheTtlMs?: number;
 }
 
 function makeRequest(options: RequestOptions): Promise<HttpResponse> {
@@ -47,6 +47,7 @@ function makeRequest(options: RequestOptions): Promise<HttpResponse> {
           statusCode: res.statusCode ?? 0,
           headers,
           body,
+          fetchedAt: Date.now(),
         });
       });
       res.on('error', reject);
@@ -68,51 +69,34 @@ function makeRequest(options: RequestOptions): Promise<HttpResponse> {
   });
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export async function httpRequest(options: RequestOptions): Promise<HttpResponse> {
-  let lastError: Error | undefined;
-
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const response = await makeRequest(options);
-
-      // Don't retry on client errors (4xx) except 429
-      if (response.statusCode >= 400 && response.statusCode < 500 && response.statusCode !== 429) {
-        return response;
+  const headers = Object.entries(options.headers ?? {})
+    .map(([key, value]) => [key.toLowerCase(), value]).sort(([a], [b]) => a.localeCompare(b));
+  return sharedQueryCache.get(
+    ['http', options.url, options.method ?? 'GET', headers],
+    options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS,
+    async () => {
+      try {
+        return await makeRequest(options);
+      } catch (error) {
+        // Never persist transport errors containing URLs, credentials or proxy details.
+        throw new Error(error instanceof Error && /^Request timed out after \d+ms$/.test(error.message)
+          ? error.message : '网络请求失败（连接、代理或超时），请等待下个刷新周期。');
       }
-
-      // Retry on 429 or 5xx
-      if (response.statusCode === 429 || response.statusCode >= 500) {
-        if (attempt < MAX_RETRIES) {
-          const retryAfter = parseRetryAfter(response.headers['retry-after']);
-          await sleep(retryAfter ?? RETRY_DELAY_MS * (attempt + 1));
-          continue;
-        }
-      }
-
-      return response;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      if (attempt < MAX_RETRIES) {
-        await sleep(RETRY_DELAY_MS * (attempt + 1));
-      }
-    }
-  }
-
-  throw lastError ?? new Error('Request failed after retries');
+    },
+    response => response.statusCode === 429 ? parseRetryAfter(response.headers['retry-after']) : 0
+  );
 }
 
 function parseRetryAfter(
   value: string | string[] | undefined
-): number | undefined {
-  if (!value) {return undefined;}
+): number {
+  if (!value) {return 0;}
   const str = Array.isArray(value) ? value[0] : value;
-  const seconds = parseInt(str, 10);
-  if (!isNaN(seconds) && seconds > 0) {
-    return Math.min(seconds * 1000, 60_000);
+  if (/^\d+(\.\d+)?$/.test(str.trim())) {
+    const milliseconds = Number(str) * 1000;
+    return Number.isFinite(milliseconds) ? milliseconds : 0;
   }
-  return undefined;
+  const date = Date.parse(str);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : 0;
 }

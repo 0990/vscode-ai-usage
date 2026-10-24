@@ -13,9 +13,10 @@ function startHost(remoteName, extensionKind, usage = {}) {
   const calls = { providers: 0, queries: 0, statusItems: 0, shown: 0, timers: 0 };
   const updates = [];
   const commands = new Map();
+  const timers = new Map();
   class Provider {
     constructor(config) { calls.providers++; this.config = config; }
-    async getUsage() { calls.queries++; return usage[this.kind]?.(); }
+    async getUsage(interval) { calls.queries++; assert.equal(interval, 300); return usage[this.kind]?.(); }
     updateConfig() {}
   }
   class Config {
@@ -55,10 +56,11 @@ function startHost(remoteName, extensionKind, usage = {}) {
     module, exports: module.exports,
     require(name) { assert.ok(name in modules, name); return modules[name]; },
     console: { log() {} },
-    setInterval() { calls.timers++; return 1; }, clearInterval() {},
+    setTimeout(callback, delay) { const id = {}; calls.timers++; timers.set(id, { callback, delay }); return id; },
+    clearTimeout(id) { timers.delete(id); },
   });
   module.exports.activate({ extension: { extensionKind }, subscriptions: [] });
-  return { calls, updates, commands, extension: module.exports };
+  return { calls, updates, commands, timers, extension: module.exports };
 }
 
 test('SSH window never starts local providers, queries, UI or timers, even with a UI override', () => {
@@ -67,14 +69,18 @@ test('SSH window never starts local providers, queries, UI or timers, even with 
   });
 });
 
-test('remote workspace host performs queries and creates the window status bar', () => {
-  assert.deepEqual(startHost('ssh-remote', 2).calls, {
+test('remote workspace host performs queries and creates the window status bar', async () => {
+  const host = startHost('ssh-remote', 2);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(host.calls, {
     providers: 2, queries: 2, statusItems: 1, shown: 1, timers: 1,
   });
 });
 
-test('ordinary local window still performs queries and shows the status bar', () => {
-  assert.deepEqual(startHost(undefined, 1).calls, {
+test('ordinary local window still performs queries and shows the status bar', async () => {
+  const host = startHost(undefined, 1);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(host.calls, {
     providers: 2, queries: 2, statusItems: 1, shown: 1, timers: 1,
   });
 });
@@ -131,6 +137,26 @@ test('refresh and deactivation prevent old in-flight results from updating the U
   pending.resolve(quota);
   await flush();
   assert.equal(disposed.updates.length, 0);
+  assert.equal(disposed.timers.size, 0, 'an in-flight completion cannot restart polling after deactivation');
+});
+
+test('failed queries wait a full configured cycle and never create an immediate retry', async () => {
+  const host = startHost('ssh-remote', 2, {
+    claude: () => { throw new Error('HTTP 429'); },
+    openai: () => { throw new Error('offline'); },
+  });
+  await flush();
+  assert.equal(host.calls.queries, 2);
+  assert.equal(host.timers.size, 1);
+  const [id, timer] = host.timers.entries().next().value;
+  assert.equal(timer.delay, 300000);
+  host.timers.delete(id);
+  timer.callback();
+  await flush();
+  assert.equal(host.calls.queries, 4);
+  assert.equal(host.timers.size, 1);
+  host.extension.deactivate();
+  assert.equal(host.timers.size, 0);
 });
 
 test('custom balances update independently and retain configuration order', async () => {

@@ -105,6 +105,19 @@ test('HTTP and JSON failures give useful errors and never echo response bodies',
   await assert.rejects(fetchCodexUsage(authPath, async () => ({ statusCode: 200, headers: {}, body: '<html>secret</html>' })), /有效 JSON/);
 });
 
+test('cached responses retain their sample time and relative quota reset times', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'ai-usage-sample-time-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const authPath = join(dir, 'auth.json');
+  await writeFile(authPath, JSON.stringify({ tokens: { access_token: 'test-token' } }));
+  const fetchedAt = 1000000;
+  const data = await fetchCodexUsage(authPath, async () => ({
+    statusCode: 200, headers: {}, fetchedAt, body: JSON.stringify(response(short, weekly)),
+  }));
+  assert.equal(data.lastUpdated.getTime(), fetchedAt);
+  assert.equal(data.sevenDay.resetAt.getTime(), fetchedAt + 60000);
+});
+
 test('provider defaults to local subscription credentials and exposes login errors', async () => {
   const provider = new OpenAIUsageProvider(join(tmpdir(), 'missing-ai-usage-auth', 'auth.json'));
   const result = await provider.getUsage();
