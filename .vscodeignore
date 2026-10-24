@@ -2,6 +2,7 @@
 .vscode-test/**
 .github/**
 dist/**
+docs/design/**
 **/*.vsix
 src/**
 node_modules/**

@@ -1,4 +1,4 @@
-"""Build the Claude mascot and OpenAI knot native status-bar glyphs.
+"""Build the Claude starburst and OpenAI knot native status-bar glyphs.
 
 Only needed when changing the icon: python3 -m pip install fonttools
 The generated WOFF and source SVGs are committed assets; normal npm builds need no Python.
@@ -19,11 +19,11 @@ MEDIA = ROOT / 'media'
 MEDIA.mkdir(exist_ok=True)
 
 glyphs = {'.notdef': TTGlyphPen(None).glyph()}
-# Claude uses whole pixels at the status bar's native 16px icon size: 96 font
-# units per pixel. Its hollow body, two eyes and two legs stay sharp at that size.
+# At 16px, 96 font units equal one pixel. Scale Claude's 24-unit starburst to
+# 14px and center it in the 16px glyph cell (approved option B).
 # Preserve the OpenAI mark's existing scale and placement.
 transforms = {
-    'claude': (96, 0, 0, -96, 0, 1344),
+    'claude': (56, 0, 0, -56, 96, 1248),
     'openai': (22 / 24 * 64, 0, 0, -22 / 24 * 64, 64, 20 * 64),
 }
 for name, transform in transforms.items():
@@ -46,8 +46,8 @@ for name, transform in transforms.items():
     outer = max(range(len(areas)), key=lambda index: abs(areas[index]))
     pen = TTGlyphPen(None)
     for index, contour in enumerate(contours):
-        # Claude already uses nonzero winding, including the eyes inside its
-        # hollow body. Convert OpenAI's even-odd cutouts to nonzero winding.
+        # Claude has a single solid contour. Convert OpenAI's even-odd cutouts
+        # to nonzero winding.
         target = TransformPen(Cu2QuPen(pen, max_err=0.5, reverse_direction=False), transform)
         desired_positive = index == outer
         if name == 'openai' and (areas[index] > 0) != desired_positive:
@@ -59,7 +59,8 @@ font = FontBuilder(1536, isTTF=True)
 font.setupGlyphOrder(list(glyphs))
 font.setupCharacterMap({0xE001: 'claude', 0xE002: 'openai'})
 font.setupGlyf(glyphs)
-font.setupHorizontalMetrics({name: (1536, 0) for name in glyphs})
+# Keep Claude's 1px left bearing so font renderers preserve its centering.
+font.setupHorizontalMetrics({name: (1536, 96 if name == 'claude' else 0) for name in glyphs})
 font.setupHorizontalHeader(ascent=1344, descent=-192)
 font.setupNameTable({'familyName': 'AI Usage Icons', 'styleName': 'Regular',
                      'uniqueFontIdentifier': 'AIUsageIcons-Regular',
@@ -70,4 +71,4 @@ font.setupMaxp()
 font.font.flavor = 'woff'
 font.save(MEDIA / 'ai-usage-icons.woff')
 
-print('Built Claude mascot + OpenAI knot WOFF glyphs')
+print('Built Claude starburst (14px) + OpenAI knot WOFF glyphs')

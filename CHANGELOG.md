@@ -4,6 +4,10 @@
 
 - Add a tag-triggered GitHub Actions workflow that validates versions, tests, packages and publishes the VSIX as a GitHub Release asset
 
+## [0.3.6] - 2026-10-23
+
+- Replace the Claude status-bar mascot with the 14px Claude starburst mark, centered in its 16px glyph cell
+
 ## [0.3.5] - 2026-10-23
 
 - Enlarge the minimal Claude status-bar mascot to 16 × 14px so its visual size matches the ChatGPT icon while retaining crisp, hollow contours

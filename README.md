@@ -47,7 +47,7 @@ Claude、ChatGPT、自定义余额接口和 Claude 查询脚本均使用磁盘�
 - `Manage Custom Objects`：编辑、启用/停用或删除已有对象。
 - `Open All Extension Settings`：打开 VS Code 原生设置页。
 
-Claude 与 ChatGPT 状态栏只显示服务图标及额度；自定义对象显示信用卡图标、名称和余额。悬停可查看详情，点击任意一项打开统一详情页。Claude 使用 ESP32 工程 OLED 中的像素小人，GPT 使用 OpenAI 结形图标，颜色随 VS Code 主题显示。
+Claude 与 ChatGPT 状态栏只显示服务图标及额度；自定义对象显示信用卡图标、名称和余额。悬停可查看详情，点击任意一项打开统一详情页。Claude 使用 14px 星芒图标，GPT 使用 OpenAI 结形图标，颜色随 VS Code 主题显示。
 
 ## 自定义余额对象
 
@@ -58,7 +58,7 @@ Claude 与 ChatGPT 状态栏只显示服务图标及额度；自定义对象显�
 
 Base URL 可填写站点根地址或带 `/v1` 的地址；根地址会先尝试 `/v1`，仅在接口返回 404/405 时回退根地址。429、其它 HTTP 错误、无效响应和网络错误均等下个周期再查。API Key 通过 `Authorization: Bearer ...` 发送，不会写入日志或错误信息。它保存在插件运行主机的 VS Code 用户设置中；不要把包含该设置的 `settings.json` 提交到代码仓库。
 
-更新插件后，如当前窗口仍显示旧版星光或通用机器人，请执行一次 `Developer: Reload Window`，让运行中的扩展宿主和图标字体加载新版本。
+更新插件后，如当前窗口仍显示旧版像素小人或通用机器人，请执行一次 `Developer: Reload Window`，让运行中的扩展宿主和图标字体加载新版本。
 
 ## Claude 脚本查询
 

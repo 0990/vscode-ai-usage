@@ -2,7 +2,7 @@
   "name": "ai-usage-tracker",
   "displayName": "AI Usage Tracker",
   "description": "Track ChatGPT and Claude usage quotas in the status bar",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "publisher": "ai-usage-tracker",
   "license": "MIT",
   "repository": {
@@ -141,7 +141,7 @@
     },
     "icons": {
       "ai-usage-claude": {
-        "description": "Claude pixel mascot",
+        "description": "Claude starburst icon",
         "default": {
           "fontPath": "./media/ai-usage-icons.woff",
           "fontCharacter": "\\E001"
