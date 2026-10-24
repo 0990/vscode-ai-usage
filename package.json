@@ -2,7 +2,7 @@
   "name": "ai-usage-tracker",
   "displayName": "AI Usage Tracker",
   "description": "Track ChatGPT and Claude usage quotas in the status bar",
-  "version": "0.3.2",
+  "version": "0.3.5",
   "publisher": "ai-usage-tracker",
   "license": "MIT",
   "repository": {
@@ -168,7 +168,7 @@
     "check:claude": "node scripts/check-claude.cjs",
     "test:extension": "npm run build && node scripts/test-extension.cjs",
     "package": "vsce package",
-    "icons:build": "python scripts/build-icons.py"
+    "icons:build": "python3 scripts/build-icons.py"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
